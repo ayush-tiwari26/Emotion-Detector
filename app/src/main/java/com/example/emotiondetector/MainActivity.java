@@ -19,8 +19,11 @@ import android.widget.ImageView;
 import android.widget.Toast;
 
 
+import org.tensorflow.SavedModelBundle;
+import org.tensorflow.Tensor;
 import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.support.image.TensorImage;
+import org.tensorflow.types.TUint8;
 
 import java.io.IOException;
 
@@ -87,6 +90,11 @@ public class MainActivity extends AppCompatActivity {
         tensorImage.load(testImage);
         Log.d("LOG",tensorImage.toString());
 
+        SavedModelBundle model = SavedModelBundle.load("model.h5");
+        Tensor input = (Tensor) tensorImage;
+        Tensor output = model.session().runner().feed("INPUT_TENSOR", input).fetch("OUTPUT_TENSOR", 7).run().get(0);
+        Log.d("Tensor",output.toString());
+
 //        String simpleMlp = new ClassPathResource("model.h5").getFile().getPath();
 //        MultiLayerNetwork model = KerasModelImport.importKerasSequentialModelAndWeights(simpleMlp);
 //        Toast.makeText(getApplicationContext(),"DONE",Toast.LENGTH_SHORT).show();
@@ -97,7 +105,6 @@ public class MainActivity extends AppCompatActivity {
         int width, height;
         height = bmpOriginal.getHeight();
         width = bmpOriginal.getWidth();
-
         Bitmap bmpGrayscale = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(bmpGrayscale);
         Paint paint = new Paint();
