@@ -1,12 +1,12 @@
 package com.example.emotiondetector;
 
 import androidx.appcompat.app.AppCompatActivity;
-
 import android.content.Intent;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ColorMatrix;
 import android.graphics.ColorMatrixColorFilter;
 import android.graphics.Paint;
@@ -18,16 +18,22 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.Toast;
 
+import com.example.emotiondetector.ml.Model;
+import com.google.android.gms.common.util.ArrayUtils;
 
 import org.tensorflow.SavedModelBundle;
 import org.tensorflow.Tensor;
 import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.support.image.TensorImage;
+import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 import org.tensorflow.types.TUint8;
 
 import java.io.IOException;
+import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
+
+    static Model model;
 
     private static final int CAMERA_PIC_REQUEST = 2;
     public ImageView mImage;
@@ -37,6 +43,12 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         mImage = findViewById(R.id.imageView);
+        try {
+            model = Model.newInstance(this);
+        } catch (IOException e) {
+            e.printStackTrace();
+            Toast.makeText(getApplicationContext(),"Cannot Load Model",Toast.LENGTH_SHORT).show();
+        }
     }
 
     public void openGallery(View view) {
@@ -85,34 +97,50 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void startProcessing(Bitmap mImageBitmap) throws IOException{
-        Bitmap testImage = toGrayscale(Bitmap.createScaledBitmap(mImageBitmap,48,48,false));
-        TensorImage tensorImage = new TensorImage(DataType.UINT8);
-        tensorImage.load(testImage);
-        Log.d("LOG",tensorImage.toString());
+        float[] floatArray =  toGrayscale(Bitmap.createScaledBitmap(mImageBitmap,48,48,false));
 
-        SavedModelBundle model = SavedModelBundle.load("model.h5");
-        Tensor input = (Tensor) tensorImage;
-        Tensor output = model.session().runner().feed("INPUT_TENSOR", input).fetch("OUTPUT_TENSOR", 7).run().get(0);
-        Log.d("Tensor",output.toString());
+        TensorBuffer inputFeature0 = TensorBuffer.createFixedSize(new int[]{1, 48, 48, 1}, DataType.FLOAT32);
+        inputFeature0.loadArray(floatArray);
 
-//        String simpleMlp = new ClassPathResource("model.h5").getFile().getPath();
-//        MultiLayerNetwork model = KerasModelImport.importKerasSequentialModelAndWeights(simpleMlp);
-//        Toast.makeText(getApplicationContext(),"DONE",Toast.LENGTH_SHORT).show();
+        Model.Outputs outputs = model.process(inputFeature0);
+        TensorBuffer outputFeature0 = outputs.getOutputFeature0AsTensorBuffer();
+        float[] result = outputFeature0.getFloatArray();
+        //TODO
+        Toast.makeText(getApplicationContext(),resultToEmotion(result),Toast.LENGTH_SHORT).show();
     }
 
-    public Bitmap toGrayscale(Bitmap bmpOriginal)
+    public float[] toGrayscale(Bitmap bmpOriginal)
     {
-        int width, height;
-        height = bmpOriginal.getHeight();
-        width = bmpOriginal.getWidth();
-        Bitmap bmpGrayscale = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-        Canvas c = new Canvas(bmpGrayscale);
-        Paint paint = new Paint();
-        ColorMatrix cm = new ColorMatrix();
-        cm.setSaturation(0);
-        ColorMatrixColorFilter f = new ColorMatrixColorFilter(cm);
-        paint.setColorFilter(f);
-        c.drawBitmap(bmpOriginal, 0, 0, paint);
-        return bmpGrayscale;
+        float[] array = new float[bmpOriginal.getWidth()*bmpOriginal.getHeight()];
+        for (int x=0;x<bmpOriginal.getWidth();x++){
+            for (int y=0;y<bmpOriginal.getHeight();y++){
+                int pixel = bmpOriginal.getPixel(x,y);
+                int red = Color.red(pixel);
+                int blue = Color.blue(pixel);
+                int green = Color.green(pixel);
+                float bw = ((float)(red+blue+green))/765;
+                array[x*bmpOriginal.getHeight()+y] = (bw);
+            }
+        }
+        return array;
+    }
+    public String resultToEmotion(float[] result){
+        float max= 0;int p=0;
+        for(int i=0;i<7;i++){
+            if(result[i]>max){
+                p=i;
+                max=result[p];
+            }
+        }
+        switch(p){
+            case 0: return("Angry");
+            case 1: return("Disgust");
+            case 2: return("Fear");
+            case 3: return("Happy");
+            case 4: return("Sad");
+            case 5: return("Surprise");
+            case 6: return("Neutral");
+        }
+        return "ERROR";
     }
 }
